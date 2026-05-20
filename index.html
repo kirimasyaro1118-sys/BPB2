@@ -1,0 +1,178 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>BPBアイテムキメラガチャ - 究極の合成シミュレーター</title>
+    <meta name="description" content="Backpack Battles (BPB) のアイテムをランダムに組み合わせて究極のキメラアイテムを作成する、スロットアニメーション付きのプレミアムなガチャサイトです。">
+    <!-- Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;600;800&family=Noto+Sans+JP:wght@400;700;900&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <!-- 紙吹雪用キャンバス -->
+    <canvas id="confetti-canvas"></canvas>
+
+    <div class="app-container">
+        <!-- ヘッダー -->
+        <header class="app-header">
+            <div class="header-logo">
+                <span class="logo-emoji">⚔️</span>
+                <div class="logo-text">
+                    <h1>BPBアイテム<span>キメラガチャ</span></h1>
+                    <p class="logo-subtitle">Backpack Battles Chimera Studio</p>
+                </div>
+            </div>
+            <div class="header-actions">
+                <!-- 音量切り替えボタン -->
+                <button id="sound-toggle-btn" class="icon-btn" title="音声をミュート/解除" aria-label="音声を切り替え">
+                    <svg class="icon icon-sound-on" viewBox="0 0 24 24" width="24" height="24">
+                        <path fill="currentColor" d="M14,3.23V5.29C16.89,6.15 19,8.83 19,12C19,15.17 16.89,17.85 14,18.71V20.77C18,19.86 21,16.28 21,12C21,7.72 18,4.14 14,3.23M16.5,12C16.5,10.23 15.5,8.71 14,7.97V16C15.5,15.29 16.5,13.77 16.5,12M3,9V15H7L12,20V4L7,9H3Z" />
+                    </svg>
+                    <svg class="icon icon-sound-off hidden" viewBox="0 0 24 24" width="24" height="24">
+                        <path fill="currentColor" d="M12,4L9.91,6.09L12,8.18M4.27,3L3,4.27L7.73,9H3V15H7L12,20V13.27L16.25,17.53C15.58,18.04 14.83,18.43 14,18.7V20.77C15.38,20.44 16.63,19.78 17.68,18.95L20.73,22L22,20.73L4.27,3M19,12C19,12.78 18.87,13.53 18.64,14.24L20.2,15.8C20.7,14.62 21,13.35 21,12C21,7.72 18,4.14 14,3.23V5.29C16.89,6.15 19,8.83 19,12M16.5,12C16.5,10.23 15.5,8.71 14,7.97V10.18L16.4,12.58C16.46,12.39 16.5,12.2 16.5,12Z" />
+                    </svg>
+                </button>
+                <!-- ダークモード切り替えボタン -->
+                <button id="theme-toggle-btn" class="icon-btn" title="テーマ切り替え" aria-label="テーマを切り替え">
+                    <svg class="icon icon-sun" viewBox="0 0 24 24" width="24" height="24">
+                        <path fill="currentColor" d="M12,18C11.11,18 10.26,17.8 9.5,17.45C11.56,16.5 13,14.42 13,12C13,9.58 11.56,7.5 9.5,6.55C10.26,6.2 11.11,6 12,6A6,6 0 0,1 18,12A6,6 0 0,1 12,18M20,8.69V4H15.31L12,0.69L8.69,4H4V8.69L0.69,12L4,15.31V20H8.69L12,23.31L15.31,20H20V15.31L23.31,12L20,8.69Z" />
+                    </svg>
+                    <svg class="icon icon-moon hidden" viewBox="0 0 24 24" width="24" height="24">
+                        <path fill="currentColor" d="M12,18A6,6 0 0,1 6,12A6,6 0 0,1 12,6A6,6 0 0,1 18,12A6,6 0 0,1 12,18M20,8.69V4H15.31L12,0.69L8.69,4H4V8.69L0.69,12L4,15.31V20H8.69L12,23.31L15.31,20H20V15.31L23.31,12L20,8.69Z" />
+                    </svg>
+                </button>
+            </div>
+        </header>
+
+        <!-- メインコンテンツ -->
+        <main class="app-main">
+            <!-- ガチャマシン（スロット） -->
+            <section class="gacha-machine-section">
+                <div class="slots-container">
+                    <!-- スロット1 (語群1) -->
+                    <div class="slot-wrapper">
+                        <span class="slot-label">語群1</span>
+                        <div class="slot-box" id="slot-1">
+                            <div class="slot-strip" id="strip-1">
+                                <!-- JSで単語が挿入される -->
+                                <div class="slot-item">アイス</div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- ジョイントマーク -->
+                    <div class="slot-connector">
+                        <div class="connector-plus">+</div>
+                    </div>
+
+                    <!-- スロット2 (語群2) -->
+                    <div class="slot-wrapper">
+                        <span class="slot-label">語群2</span>
+                        <div class="slot-box" id="slot-2">
+                            <div class="slot-strip" id="strip-2">
+                                <!-- JSで単語が挿入される -->
+                                <div class="slot-item">ドラゴン</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- ガチャレバー/ボタン -->
+                <div class="gacha-control">
+                    <button id="spin-btn" class="spin-button">
+                        <span class="btn-shine"></span>
+                        <span class="btn-text">ガチャを回す！</span>
+                        <span class="btn-subtext">SPIN THE WHEEL</span>
+                    </button>
+                </div>
+
+                <!-- 高速モードトグル (最初は非表示、3回プレイ後に解放) -->
+                <div id="fast-mode-container" class="fast-mode-container hidden">
+                    <label class="toggle-switch">
+                        <input type="checkbox" id="fast-mode-checkbox">
+                        <span class="slider"></span>
+                    </label>
+                    <span class="toggle-label">演出スキップ (高速モード) <span class="unlocked-badge">UNLOCKED!</span></span>
+                </div>
+            </section>
+
+            <!-- 結果表示エリア -->
+            <section id="result-section" class="result-section hidden">
+                <div class="result-card">
+                    <div class="result-badge">⚔️ 究極のキメラアイテム誕生 ⚔️</div>
+                    <h2 id="result-text" class="result-text">---</h2>
+                    <div class="result-pricing">
+                        <span class="price-label">ショップ販売価格:</span>
+                        <span id="result-price" class="price-value">--- ゴールド</span>
+                    </div>
+                    <div class="result-actions">
+                        <button id="copy-btn" class="action-btn">
+                            <svg viewBox="0 0 24 24" width="18" height="18">
+                                <path fill="currentColor" d="M19,21H8V7H19M19,5H8A2,2 0 0,0 6,7V21A2,2 0 0,0 8,23H19A2,2 0 0,0 21,21V7A2,2 0 0,0 19,5M16,1H4A2,2 0 0,0 2,3V17H4V3H16V1Z" />
+                            </svg>
+                            結果をコピー
+                        </button>
+                        <button id="share-btn" class="action-btn share-x-btn">
+                            <svg viewBox="0 0 24 24" width="18" height="18">
+                                <path fill="currentColor" d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z"/>
+                            </svg>
+                            Xでシェア
+                        </button>
+                    </div>
+                </div>
+            </section>
+
+            <!-- 語群確認セクション -->
+            <section class="settings-section">
+                <div class="settings-header">
+                    <h2>📋 収録されている語群の一覧</h2>
+                    <p class="section-desc">このガチャに登録されている「修飾語（語群1）」と「名詞（語群2）」の全リストです。どのようなキメラアイテムが作られるか確認してみましょう。</p>
+                </div>
+
+                <div class="word-viewer-container">
+                    <div class="viewer-box">
+                        <div class="viewer-header">
+                            <h4>語群1 (修飾語・接頭辞) <span class="word-count" id="count-group1">0語</span></h4>
+                        </div>
+                        <div class="word-list" id="viewer-list-1">
+                            <!-- JSで単語チップが挿入される -->
+                        </div>
+                    </div>
+                    <div class="viewer-box">
+                        <div class="viewer-header">
+                            <h4>語群2 (名詞・ベース) <span class="word-count" id="count-group2">0語</span></h4>
+                        </div>
+                        <div class="word-list" id="viewer-list-2">
+                            <!-- JSで単語チップが挿入される -->
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- 履歴セクション -->
+            <section class="history-section">
+                <div class="history-header">
+                    <h2>🎯 ガチャの履歴</h2>
+                    <button id="clear-history-btn" class="text-btn">履歴をクリア</button>
+                </div>
+                <div id="history-list" class="history-list">
+                    <p class="no-history">まだ履歴がありません。ガチャを回してみましょう！</p>
+                </div>
+            </section>
+        </main>
+
+        <!-- フッター -->
+        <footer class="app-footer">
+            <p>&copy; 2026 BPBアイテムキメラガチャ Studio. All Rights Reserved.</p>
+        </footer>
+    </div>
+
+    <!-- トースト通知 -->
+    <div id="toast" class="toast hidden">コピーしました！</div>
+
+    <script src="app.js"></script>
+</body>
+</html>
