@@ -26,6 +26,22 @@
                 </div>
             </div>
             <div class="header-actions">
+                <!-- 世界累計ガチャ回数カウンター (カウントアップ式・数値のみ) -->
+                <div class="global-counter-badge" id="global-counter">
+                    <div class="global-counter-value" id="global-counter-value">
+                        <span class="counter-digit offline-dash">ー</span>
+                    </div>
+                </div>
+
+                <!-- 高速モードトグル (最初から右上) -->
+                <div id="fast-mode-container" class="fast-mode-container">
+                    <label class="toggle-switch">
+                        <input type="checkbox" id="fast-mode-checkbox">
+                        <span class="slider"></span>
+                    </label>
+                    <span class="toggle-label">高速モード</span>
+                </div>
+
                 <!-- 音量切り替えボタン -->
                 <button id="sound-toggle-btn" class="icon-btn" title="音声をミュート/解除" aria-label="音声を切り替え">
                     <svg class="icon icon-sound-on" viewBox="0 0 24 24" width="24" height="24">
@@ -54,7 +70,10 @@
                 <div class="slots-container">
                     <!-- スロット1 (語群1) -->
                     <div class="slot-wrapper">
-                        <span class="slot-label">語群1</span>
+                        <div class="slot-header">
+                            <span class="slot-label">語群1</span>
+                            <span class="slot-lock-indicator hidden" id="lock-indicator-1">🔒 固定中</span>
+                        </div>
                         <div class="slot-box" id="slot-1">
                             <div class="slot-strip" id="strip-1">
                                 <!-- JSで単語が挿入される -->
@@ -70,7 +89,10 @@
 
                     <!-- スロット2 (語群2) -->
                     <div class="slot-wrapper">
-                        <span class="slot-label">語群2</span>
+                        <div class="slot-header">
+                            <span class="slot-label">語群2</span>
+                            <span class="slot-lock-indicator hidden" id="lock-indicator-2">🔒 固定中</span>
+                        </div>
                         <div class="slot-box" id="slot-2">
                             <div class="slot-strip" id="strip-2">
                                 <!-- JSで単語が挿入される -->
@@ -87,15 +109,6 @@
                         <span class="btn-text">ガチャを回す！</span>
                         <span class="btn-subtext">SPIN THE WHEEL</span>
                     </button>
-                </div>
-
-                <!-- 高速モードトグル (最初は非表示、3回プレイ後に解放) -->
-                <div id="fast-mode-container" class="fast-mode-container hidden">
-                    <label class="toggle-switch">
-                        <input type="checkbox" id="fast-mode-checkbox">
-                        <span class="slider"></span>
-                    </label>
-                    <span class="toggle-label">演出スキップ (高速モード) <span class="unlocked-badge">UNLOCKED!</span></span>
                 </div>
             </section>
 
@@ -120,6 +133,12 @@
                                 <path fill="currentColor" d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z"/>
                             </svg>
                             Xでシェア
+                        </button>
+                        <button id="bookmark-btn" class="action-btn">
+                            <svg class="icon-star" viewBox="0 0 24 24" width="18" height="18" style="transition: transform 0.2s ease;">
+                                <path fill="currentColor" d="M12,17.27L18.18,21L16.54,13.97L22,9.24L14.81,8.62L12,2L9.19,8.62L2,9.24L7.45,13.97L5.82,21L12,17.27Z"/>
+                            </svg>
+                            <span id="bookmark-btn-text">ブックマークする</span>
                         </button>
                     </div>
                 </div>
@@ -152,6 +171,17 @@
                 </div>
             </section>
 
+            <!-- ブックマークセクション -->
+            <section class="bookmark-section">
+                <div class="bookmark-header">
+                    <h2>⭐ ブックマーク</h2>
+                    <button id="clear-bookmarks-btn" class="text-btn">すべて解除</button>
+                </div>
+                <div id="bookmarks-list" class="bookmarks-list">
+                    <p class="no-bookmarks">ブックマークされたキメラアイテムはまだありません。星マークをクリックしてブックマークしましょう！</p>
+                </div>
+            </section>
+
             <!-- 履歴セクション -->
             <section class="history-section">
                 <div class="history-header">
@@ -164,10 +194,6 @@
             </section>
         </main>
 
-        <!-- フッター -->
-        <footer class="app-footer">
-            <p>&copy; 2026 BPBアイテムキメラガチャ Studio. All Rights Reserved.</p>
-        </footer>
     </div>
 
     <!-- トースト通知 -->

@@ -17,6 +17,110 @@ let activeGroup2 = [...PRESETS.standard.group2];
 let isSpinning = false;
 let soundEnabled = true;
 let normalRollCount = parseInt(localStorage.getItem('normal_roll_count') || '0', 10);
+let totalRollCount = parseInt(localStorage.getItem('total_roll_count') || '0', 10);
+let lockedWord1 = null;
+let lockedWord2 = null;
+let idleTimer = null;
+let bookmarks = JSON.parse(localStorage.getItem('gacha_bookmarks') || '[]');
+
+
+// --- 世界累計カウンター同期機能 (CounterAPI) ---
+const COUNTER_API_URL = "https://api.counterapi.dev/v1/katad-apps/bpb-chimera-gacha-spins";
+
+async function fetchGlobalSpins() {
+    try {
+        const response = await fetch(COUNTER_API_URL);
+        if (!response.ok) throw new Error("Fetch global spins failed");
+        const data = await response.json();
+        if (typeof data.value !== 'number') throw new Error("Invalid value from API");
+        updateGlobalCounterUI(data.value);
+    } catch (e) {
+        console.warn("Global counter fetch failed, setting to offline.", e);
+        // エラー時はダミー数値ではなく 'ー' を表示
+        updateGlobalCounterUI("ー");
+        setCounterOfflineUI();
+    }
+}
+
+async function incrementGlobalSpins() {
+    try {
+        const response = await fetch(`${COUNTER_API_URL}/up`);
+        if (!response.ok) throw new Error("Increment global spins failed");
+        const data = await response.json();
+        if (typeof data.value !== 'number') throw new Error("Invalid value from API");
+        updateGlobalCounterUI(data.value);
+    } catch (e) {
+        console.warn("Global counter increment failed, setting to offline.", e);
+        // エラー時はダミー数値ではなく 'ー' を表示
+        updateGlobalCounterUI("ー");
+        setCounterOfflineUI();
+    }
+}
+
+function setCounterOfflineUI() {
+    const badge = document.getElementById('global-counter');
+    if (badge) {
+        badge.classList.add('offline');
+    }
+}
+
+function updateGlobalCounterUI(value) {
+    const el = document.getElementById('global-counter-value');
+    const badge = document.getElementById('global-counter');
+    if (el) {
+        if (typeof value === 'number') {
+            if (badge) badge.classList.remove('offline');
+            const formatted = value.toLocaleString();
+            el.innerHTML = formatted.split('').map(char => {
+                if (char === ',') {
+                    return `<span class="counter-comma">,</span>`;
+                } else {
+                    return `<span class="counter-digit">${char}</span>`;
+                }
+            }).join('');
+        } else {
+            if (badge) badge.classList.add('offline');
+            // undefinedやnull、文字列の 'undefined' が渡された場合は確実に 'ー' にフォールバックする
+            const displayValue = (value === undefined || value === null || value === 'undefined' || value === '') ? "ー" : value;
+            el.innerHTML = `<span class="counter-digit offline-dash">${displayValue}</span>`;
+        }
+    }
+}
+
+// ローカルの全ロール回数のカウント
+function incrementTotalRolls() {
+    totalRollCount++;
+    localStorage.setItem('total_roll_count', totalRollCount);
+}
+
+// 5秒放置検知によるTips自動表示
+function resetIdleTimer() {
+    if (lockedWord1 || lockedWord2) {
+        if (idleTimer) {
+            clearTimeout(idleTimer);
+            idleTimer = null;
+        }
+        return;
+    }
+    if (idleTimer) {
+        clearTimeout(idleTimer);
+    }
+    idleTimer = setTimeout(() => {
+        if (isSpinning) {
+            resetIdleTimer(); // スピン中は5秒後に延期
+            return;
+        }
+        if (lockedWord1 || lockedWord2) {
+            return;
+        }
+        const toast = document.getElementById('toast');
+        if (toast && !toast.classList.contains('hidden') && toast.textContent.includes('高速モード')) {
+            resetIdleTimer(); // 高速モード案内が表示されている場合は延期
+            return;
+        }
+        showToast("💡 語群の単語をクリックするとスロットを固定できます！", 0);
+    }, 5000);
+}
 
 // --- Web Audio API 音響制御 ---
 let audioCtx = null;
@@ -261,12 +365,18 @@ function animateSlot(stripId, words, delayStop, onComplete) {
 function spinGacha() {
     if (isSpinning) return;
 
+    // ガチャを回した瞬間に、アンロックガイドなどの常時表示トーストを非表示にする
+    document.getElementById('toast').classList.add('hidden');
+
+    // 世界累計ガチャ回数を非同期で+1加算（結果を待たずにガチャを回す）
+    incrementGlobalSpins();
+
     const fastModeActive = document.getElementById('fast-mode-checkbox')?.checked || false;
 
     if (fastModeActive) {
         // --- 高速モード（即座に結果を出力） ---
-        const result1 = activeGroup1[Math.floor(Math.random() * activeGroup1.length)];
-        const result2 = activeGroup2[Math.floor(Math.random() * activeGroup2.length)];
+        const result1 = lockedWord1 || activeGroup1[Math.floor(Math.random() * activeGroup1.length)];
+        const result2 = lockedWord2 || activeGroup2[Math.floor(Math.random() * activeGroup2.length)];
         const resultText = result1 + result2;
         const price = calculateBPBGold(result1, result2);
 
@@ -280,6 +390,8 @@ function spinGacha() {
         document.getElementById('result-text').textContent = resultText;
         document.getElementById('result-price').textContent = price;
         document.getElementById('result-section').classList.remove('hidden');
+        updateBookmarkButtonUI(resultText);
+
 
         // 効果音と紙吹雪
         playSuccessSound();
@@ -287,6 +399,48 @@ function spinGacha() {
 
         // 履歴追加
         addToHistory(resultText, price);
+        incrementTotalRolls();
+        resetIdleTimer();
+        return;
+    }
+
+    // --- 両スロット固定時の即時処理 ---
+    if (lockedWord1 && lockedWord2) {
+        const resultText = lockedWord1 + lockedWord2;
+        const price = calculateBPBGold(lockedWord1, lockedWord2);
+
+        // スロット表示の確定
+        document.getElementById('strip-1').innerHTML = `<div class="slot-item">${lockedWord1}</div>`;
+        document.getElementById('strip-2').innerHTML = `<div class="slot-item">${lockedWord2}</div>`;
+        document.getElementById('strip-1').style.transform = 'translateY(0)';
+        document.getElementById('strip-2').style.transform = 'translateY(0)';
+
+        // 結果の描画
+        document.getElementById('result-text').textContent = resultText;
+        document.getElementById('result-price').textContent = price;
+        document.getElementById('result-section').classList.remove('hidden');
+        updateBookmarkButtonUI(resultText);
+
+
+        // 演出と履歴
+        playSuccessSound();
+        spawnConfetti();
+        addToHistory(resultText, price);
+        incrementTotalRolls();
+        resetIdleTimer();
+
+        // 通常ロール回数のカウントと高速モード解放判定
+        if (normalRollCount < 3) {
+            normalRollCount++;
+            localStorage.setItem('normal_roll_count', normalRollCount);
+            if (normalRollCount === 3) {
+                const container = document.getElementById('fast-mode-container');
+                container.classList.add('highlight-glow');
+                setTimeout(() => {
+                    showToast("💡 右上のヘッダーに、演出をスキップして即時に結果を出す「高速モード」が追加されました！ONにすると待ち時間ゼロで回せます！", 0);
+                }, 800);
+            }
+        }
         return;
     }
 
@@ -299,9 +453,9 @@ function spinGacha() {
     spinBtn.classList.add('spinning');
     document.getElementById('result-section').classList.add('hidden');
     
-    let result1 = "";
-    let result2 = "";
-    let completedSlots = 0;
+    let result1 = lockedWord1 || "";
+    let result2 = lockedWord2 || "";
+    let completedSlots = (lockedWord1 ? 1 : 0) + (lockedWord2 ? 1 : 0);
 
     function checkCompletion() {
         completedSlots++;
@@ -318,6 +472,8 @@ function spinGacha() {
             document.getElementById('result-text').textContent = resultText;
             document.getElementById('result-price').textContent = price;
             document.getElementById('result-section').classList.remove('hidden');
+            updateBookmarkButtonUI(resultText);
+
 
             // 演出
             playSuccessSound();
@@ -325,6 +481,7 @@ function spinGacha() {
 
             // 履歴に追加
             addToHistory(resultText, price);
+            incrementTotalRolls();
 
             // 通常ロール回数のカウントと高速モード解放判定
             if (normalRollCount < 3) {
@@ -332,30 +489,34 @@ function spinGacha() {
                 localStorage.setItem('normal_roll_count', normalRollCount);
                 
                 if (normalRollCount === 3) {
-                    // 3回達成！高速モードをアンロック
+                    // 3回達成！高速モードの存在をハイライト
                     const container = document.getElementById('fast-mode-container');
-                    container.classList.remove('hidden');
-                    container.style.animation = 'pop 0.6s cubic-bezier(0.175, 0.885, 0.32, 1.275)';
+                    container.classList.add('highlight-glow');
                     
-                    // アナウンスの通知（特別なビジュアルトースト）
+                    // アナウンスの通知（右上の高速モードをガイドするトースト、次に回すまで常時表示）
                     setTimeout(() => {
-                        showToast("🎉 3回プレイ達成！演出スキップ「高速モード」が解放されました！", 6000);
+                        showToast("💡 右上のヘッダーに、演出をスキップして即時に結果を出す「高速モード」が追加されました！ONにすると待ち時間ゼロで回せます！", 0);
                     }, 800);
                 }
             }
+            resetIdleTimer();
         }
     }
 
     // スロット1は1.2秒後に停止、スロット2は1.9秒後に停止（時間差によるワクワク演出）
-    animateSlot('strip-1', activeGroup1, 1200, (word) => {
-        result1 = word;
-        checkCompletion();
-    });
+    if (!lockedWord1) {
+        animateSlot('strip-1', activeGroup1, 1200, (word) => {
+            result1 = word;
+            checkCompletion();
+        });
+    }
 
-    animateSlot('strip-2', activeGroup2, 1900, (word) => {
-        result2 = word;
-        checkCompletion();
-    });
+    if (!lockedWord2) {
+        animateSlot('strip-2', activeGroup2, 1900, (word) => {
+            result2 = word;
+            checkCompletion();
+        });
+    }
 }
 
 // --- 履歴ログ管理 ---
@@ -385,17 +546,25 @@ function renderHistory() {
         return;
     }
 
-    list.innerHTML = history.map((item, idx) => `
-        <div class="history-item">
-            <div class="history-item-left">
-                <span class="history-word">${item.word}</span>
-                <span class="history-meta">ロール時刻: ${item.time}</span>
+    list.innerHTML = history.map((item, idx) => {
+        const bookmarked = isBookmarked(item.word);
+        return `
+            <div class="history-item">
+                <div class="history-item-left">
+                    <span class="history-word">${item.word}</span>
+                    <span class="history-meta">ロール時刻: ${item.time}</span>
+                </div>
+                <div class="history-item-right">
+                    <span class="history-price">${item.price}</span>
+                    <button class="history-bookmark-btn${bookmarked ? ' active' : ''}" data-word="${item.word}" data-price="${item.price}" data-time="${item.time}" title="お気に入り" aria-label="お気に入り">
+                        <svg viewBox="0 0 24 24" width="16" height="16">
+                            <path fill="currentColor" d="M12,17.27L18.18,21L16.54,13.97L22,9.24L14.81,8.62L12,2L9.19,8.62L2,9.24L7.45,13.97L5.82,21L12,17.27Z"/>
+                        </svg>
+                    </button>
+                </div>
             </div>
-            <div class="history-item-right">
-                <span class="history-price">${item.price}</span>
-            </div>
-        </div>
-    `).join('');
+        `;
+    }).join('');
 }
 
 function clearHistory() {
@@ -410,12 +579,17 @@ function showToast(message, duration = 2000) {
     toast.textContent = message;
     toast.classList.remove('hidden');
     
-    if (toast.timeoutId) clearTimeout(toast.timeoutId);
+    if (toast.timeoutId) {
+        clearTimeout(toast.timeoutId);
+        toast.timeoutId = null;
+    }
     
-    // フェードアウト
-    toast.timeoutId = setTimeout(() => {
-        toast.classList.add('hidden');
-    }, duration);
+    // duration が 0 より大きい場合のみ自動で消す
+    if (duration > 0) {
+        toast.timeoutId = setTimeout(() => {
+            toast.classList.add('hidden');
+        }, duration);
+    }
 }
 
 // --- テーマ（ライト/ダーク）管理 ---
@@ -484,10 +658,11 @@ function shareOnX() {
     
     if (resultText === '---') return;
     
-    const text = encodeURIComponent(`⚔️ BPBアイテムキメラガチャ結果：【${resultText}】（ショップ販売価格: ${resultPrice}）\n`);
-    const hashtags = encodeURIComponent("BPBキメラガチャ,バックパックバトル");
-    const shareUrl = `https://twitter.com/intent/tweet?text=${text}&hashtags=${hashtags}`;
+    const priceNumber = resultPrice.replace(/[^0-9]/g, '');
+    const pageUrl = window.location.href;
+    const tweetText = `BPBアイテムキメラガチャ結果\n【${resultText}】\n価値:${priceNumber}ゴールド\n#BPBキメラガチャ\n${pageUrl}`;
     
+    const shareUrl = `https://twitter.com/intent/tweet?text=${encodeURIComponent(tweetText)}`;
     window.open(shareUrl, '_blank');
 }
 
@@ -505,11 +680,147 @@ function renderWordViewer() {
     count1.textContent = `${activeGroup1.length}語`;
     count2.textContent = `${activeGroup2.length}語`;
 
-    // 語群1のレンダリング
-    list1.innerHTML = activeGroup1.map(w => `<span class="word-chip">${w}</span>`).join('');
+    // 語群1のレンダリング (固定中ならselectedクラスと鍵マークを付与)
+    list1.innerHTML = activeGroup1.map(w => {
+        const isSelected = lockedWord1 === w;
+        return `<span class="word-chip${isSelected ? ' selected' : ''}" data-word="${w}">${isSelected ? '🔒 ' : ''}${w}</span>`;
+    }).join('');
     
-    // 語群2のレンダリング
-    list2.innerHTML = activeGroup2.map(w => `<span class="word-chip">${w}</span>`).join('');
+    // 語群2のレンダリング (固定中ならselectedクラスと鍵マークを付与)
+    list2.innerHTML = activeGroup2.map(w => {
+        const isSelected = lockedWord2 === w;
+        return `<span class="word-chip${isSelected ? ' selected' : ''}" data-word="${w}">${isSelected ? '🔒 ' : ''}${w}</span>`;
+    }).join('');
+}
+
+// --- スロット固定UI同期処理 ---
+function updateSlotLockUI() {
+    const indicator1 = document.getElementById('lock-indicator-1');
+    const indicator2 = document.getElementById('lock-indicator-2');
+    const strip1 = document.getElementById('strip-1');
+    const strip2 = document.getElementById('strip-2');
+
+    if (!indicator1 || !indicator2 || !strip1 || !strip2) return;
+
+    if (lockedWord1) {
+        indicator1.classList.remove('hidden');
+        strip1.innerHTML = `<div class="slot-item">${lockedWord1}</div>`;
+        strip1.style.transform = 'translateY(0)';
+    } else {
+        indicator1.classList.add('hidden');
+    }
+
+    if (lockedWord2) {
+        indicator2.classList.remove('hidden');
+        strip2.innerHTML = `<div class="slot-item">${lockedWord2}</div>`;
+        strip2.style.transform = 'translateY(0)';
+    } else {
+        indicator2.classList.add('hidden');
+    }
+}
+
+// --- ブックマーク機能 (お気に入り保存・同期・プレビュー) ---
+function splitChimeraWord(chimeraWord) {
+    for (const w1 of activeGroup1) {
+        if (chimeraWord.startsWith(w1)) {
+            const w2 = chimeraWord.substring(w1.length);
+            if (activeGroup2.includes(w2)) {
+                return { word1: w1, word2: w2 };
+            }
+        }
+    }
+    return { word1: "", word2: "" };
+}
+
+function isBookmarked(word) {
+    return bookmarks.some(b => b.word === word);
+}
+
+function toggleBookmark(word, price, time) {
+    if (!word || word === '---') return;
+    
+    const index = bookmarks.findIndex(b => b.word === word);
+    if (index > -1) {
+        bookmarks.splice(index, 1);
+        showToast("ブックマークから削除しました");
+    } else {
+        let timeStr = time;
+        if (!timeStr) {
+            const now = new Date();
+            timeStr = `${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}:${now.getSeconds().toString().padStart(2, '0')}`;
+        }
+        bookmarks.push({ word, price, time: timeStr });
+        showToast("ブックマークに追加しました！");
+    }
+    
+    localStorage.setItem('gacha_bookmarks', JSON.stringify(bookmarks));
+    renderBookmarks();
+    renderHistory();
+    
+    const currentWord = document.getElementById('result-text').textContent;
+    if (currentWord === word) {
+        updateBookmarkButtonUI(word);
+    }
+}
+
+function renderBookmarks() {
+    const list = document.getElementById('bookmarks-list');
+    if (!list) return;
+    
+    if (bookmarks.length === 0) {
+        list.innerHTML = `<p class="no-bookmarks">ブックマークされたキメラアイテムはまだありません。星マークをクリックしてブックマークしましょう！</p>`;
+        return;
+    }
+    
+    list.innerHTML = bookmarks.map(item => `
+        <div class="bookmark-card" data-word="${item.word}" data-price="${item.price}">
+            <div class="bookmark-card-body">
+                <span class="bookmark-card-word">${item.word}</span>
+                <span class="bookmark-card-price">${item.price}</span>
+            </div>
+            <button class="bookmark-card-delete" data-word="${item.word}" title="削除" aria-label="削除">
+                <svg viewBox="0 0 24 24" width="14" height="14">
+                    <path fill="currentColor" d="M19,6.41L17.59,5L12,10.59L6.41,5L5,6.41L10.59,12L5,17.59L6.41,19L12,13.41L17.59,19L19,17.59L13.41,12L19,6.41Z"/>
+                </svg>
+            </button>
+        </div>
+    `).join('');
+}
+
+function previewBookmark(word, price) {
+    if (isSpinning) return;
+    
+    document.getElementById('result-text').textContent = word;
+    document.getElementById('result-price').textContent = price;
+    document.getElementById('result-section').classList.remove('hidden');
+    
+    const parts = splitChimeraWord(word);
+    if (parts.word1 && parts.word2) {
+        document.getElementById('strip-1').innerHTML = `<div class="slot-item">${parts.word1}</div>`;
+        document.getElementById('strip-2').innerHTML = `<div class="slot-item">${parts.word2}</div>`;
+        document.getElementById('strip-1').style.transform = 'translateY(0)';
+        document.getElementById('strip-2').style.transform = 'translateY(0)';
+    }
+    
+    updateBookmarkButtonUI(word);
+    playTickSound(900, 0.05);
+    resetIdleTimer();
+    
+    document.getElementById('result-section').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+}
+
+function updateBookmarkButtonUI(word) {
+    const btn = document.getElementById('bookmark-btn');
+    const text = document.getElementById('bookmark-btn-text');
+    if (!btn || !text) return;
+    
+    if (isBookmarked(word)) {
+        btn.classList.add('active');
+        text.textContent = 'ブックマーク済み';
+    } else {
+        btn.classList.remove('active');
+        text.textContent = 'ブックマークする';
+    }
 }
 
 // --- 初期ロードセットアップ ---
@@ -519,11 +830,8 @@ document.addEventListener('DOMContentLoaded', () => {
     initSlotStrips();
     renderWordViewer();
     renderHistory();
-
-    // 既に3回以上プレイしていれば高速モードを初期状態で表示
-    if (normalRollCount >= 3) {
-        document.getElementById('fast-mode-container').classList.remove('hidden');
-    }
+    renderBookmarks(); // ブックマーク一覧のロード
+    fetchGlobalSpins(); // 世界累計ガチャ回数のロード
 
     // イベントリスナーの登録
     document.getElementById('spin-btn').addEventListener('click', spinGacha);
@@ -533,6 +841,111 @@ document.addEventListener('DOMContentLoaded', () => {
     document.getElementById('share-btn').addEventListener('click', shareOnX);
     document.getElementById('clear-history-btn').addEventListener('click', clearHistory);
 
+    // ブックマーク登録ボタン
+    document.getElementById('bookmark-btn').addEventListener('click', () => {
+        if (isSpinning) return;
+        const word = document.getElementById('result-text').textContent;
+        const price = document.getElementById('result-price').textContent;
+        if (word === '---') return;
+        toggleBookmark(word, price);
+        playTickSound(1000, 0.04);
+        resetIdleTimer();
+    });
+
+    // すべて解除ボタン
+    document.getElementById('clear-bookmarks-btn').addEventListener('click', () => {
+        if (bookmarks.length === 0) return;
+        if (confirm("すべてのブックマークを解除しますか？")) {
+            bookmarks = [];
+            localStorage.removeItem('gacha_bookmarks');
+            renderBookmarks();
+            renderHistory();
+            const currentWord = document.getElementById('result-text').textContent;
+            updateBookmarkButtonUI(currentWord);
+            showToast("すべてのブックマークを解除しました");
+            playTickSound(600, 0.05);
+            resetIdleTimer();
+        }
+    });
+
+    // ブックマーク一覧クリック（プレビュー・個別削除）
+    document.getElementById('bookmarks-list').addEventListener('click', (e) => {
+        if (isSpinning) return;
+        
+        // 削除ボタン
+        const deleteBtn = e.target.closest('.bookmark-card-delete');
+        if (deleteBtn) {
+            e.stopPropagation();
+            const word = deleteBtn.dataset.word;
+            toggleBookmark(word);
+            playTickSound(800, 0.04);
+            resetIdleTimer();
+            return;
+        }
+        
+        // プレビュー
+        const card = e.target.closest('.bookmark-card');
+        if (card) {
+            const word = card.dataset.word;
+            const price = card.dataset.price;
+            previewBookmark(word, price);
+        }
+    });
+
+    // 履歴のお気に入りスタークリック（イベントデリゲーション）
+    document.getElementById('history-list').addEventListener('click', (e) => {
+        if (isSpinning) return;
+        const bookmarkBtn = e.target.closest('.history-bookmark-btn');
+        if (bookmarkBtn) {
+            e.stopPropagation();
+            const word = bookmarkBtn.dataset.word;
+            const price = bookmarkBtn.dataset.price;
+            const time = bookmarkBtn.dataset.time;
+            toggleBookmark(word, price, time);
+            playTickSound(1000, 0.04);
+            resetIdleTimer();
+        }
+    });
+
+    // 語群1の単語チップ選択（固定）の登録
+    document.getElementById('viewer-list-1').addEventListener('click', (e) => {
+        if (isSpinning) return;
+        const chip = e.target.closest('.word-chip');
+        if (!chip) return;
+        const word = chip.dataset.word;
+        if (lockedWord1 === word) {
+            lockedWord1 = null;
+        } else {
+            lockedWord1 = word;
+        }
+        renderWordViewer();
+        updateSlotLockUI();
+        playTickSound(1000, 0.04);
+        resetIdleTimer();
+    });
+
+    // 語群2の単語チップ選択（固定）の登録
+    document.getElementById('viewer-list-2').addEventListener('click', (e) => {
+        if (isSpinning) return;
+        const chip = e.target.closest('.word-chip');
+        if (!chip) return;
+        const word = chip.dataset.word;
+        if (lockedWord2 === word) {
+            lockedWord2 = null;
+        } else {
+            lockedWord2 = word;
+        }
+        renderWordViewer();
+        updateSlotLockUI();
+        playTickSound(1000, 0.04);
+        resetIdleTimer();
+    });
+
+    // 高速モードが操作されたらハイライト点滅を消去する
+    document.getElementById('fast-mode-checkbox').addEventListener('change', () => {
+        document.getElementById('fast-mode-container').classList.remove('highlight-glow');
+    });
+
     // キーボードのSpaceキーでもガチャを回せるようにする（親切なアクセシビリティ設計）
     window.addEventListener('keydown', (e) => {
         if (e.code === 'Space' && document.activeElement.tagName !== 'TEXTAREA' && document.activeElement.tagName !== 'BUTTON') {
@@ -540,4 +953,11 @@ document.addEventListener('DOMContentLoaded', () => {
             spinGacha();
         }
     });
+
+    // 5秒放置の監視（マウス移動、クリック、キー入力、スクロール、タッチでタイマーリセット）
+    const activityEvents = ['mousemove', 'mousedown', 'keydown', 'scroll', 'touchstart'];
+    activityEvents.forEach(evt => {
+        window.addEventListener(evt, resetIdleTimer, { passive: true });
+    });
+    resetIdleTimer(); // 初期ロード時にタイマー起動
 });
