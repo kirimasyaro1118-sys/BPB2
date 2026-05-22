@@ -32,8 +32,9 @@ async function fetchGlobalSpins() {
         const response = await fetch(COUNTER_API_URL);
         if (!response.ok) throw new Error("Fetch global spins failed");
         const data = await response.json();
-        if (typeof data.value !== 'number') throw new Error("Invalid value from API");
-        updateGlobalCounterUI(data.value);
+        const count = typeof data.count === 'number' ? data.count : data.value;
+        if (typeof count !== 'number') throw new Error("Invalid value from API");
+        updateGlobalCounterUI(count);
     } catch (e) {
         console.warn("Global counter fetch failed, setting to offline.", e);
         // エラー時はダミー数値ではなく 'ー' を表示
@@ -47,8 +48,9 @@ async function incrementGlobalSpins() {
         const response = await fetch(`${COUNTER_API_URL}/up`);
         if (!response.ok) throw new Error("Increment global spins failed");
         const data = await response.json();
-        if (typeof data.value !== 'number') throw new Error("Invalid value from API");
-        updateGlobalCounterUI(data.value);
+        const count = typeof data.count === 'number' ? data.count : data.value;
+        if (typeof count !== 'number') throw new Error("Invalid value from API");
+        updateGlobalCounterUI(count);
     } catch (e) {
         console.warn("Global counter increment failed, setting to offline.", e);
         // エラー時はダミー数値ではなく 'ー' を表示
