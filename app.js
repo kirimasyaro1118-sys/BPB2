@@ -641,13 +641,20 @@ function toggleSound() {
 }
 
 // --- 共有 & コピーユーティリティ ---
-function copyResult() {
+function getFormattedShareText() {
     const resultText = document.getElementById('result-text').textContent;
     const resultPrice = document.getElementById('result-price').textContent;
     
-    if (resultText === '---') return;
+    if (resultText === '---') return null;
     
-    const textToCopy = `⚔️ BPBアイテムキメラガチャ結果：【${resultText}】（ショップ販売価格: ${resultPrice}）\n#BPBキメラガチャ #バックパックバトル`;
+    const priceNumber = resultPrice.replace(/[^0-9]/g, '');
+    const pageUrl = window.location.href;
+    return `BPBアイテムキメラガチャ結果\n【${resultText}】\n価値:${priceNumber}ゴールド\n#BPBキメラガチャ\n${pageUrl}`;
+}
+
+function copyResult() {
+    const textToCopy = getFormattedShareText();
+    if (!textToCopy) return;
     
     navigator.clipboard.writeText(textToCopy)
         .then(() => showToast("クリップボードにコピーしました！"))
@@ -655,14 +662,8 @@ function copyResult() {
 }
 
 function shareOnX() {
-    const resultText = document.getElementById('result-text').textContent;
-    const resultPrice = document.getElementById('result-price').textContent;
-    
-    if (resultText === '---') return;
-    
-    const priceNumber = resultPrice.replace(/[^0-9]/g, '');
-    const pageUrl = window.location.href;
-    const tweetText = `BPBアイテムキメラガチャ結果\n【${resultText}】\n価値:${priceNumber}ゴールド\n#BPBキメラガチャ\n${pageUrl}`;
+    const tweetText = getFormattedShareText();
+    if (!tweetText) return;
     
     const shareUrl = `https://twitter.com/intent/tweet?text=${encodeURIComponent(tweetText)}`;
     window.open(shareUrl, '_blank');
