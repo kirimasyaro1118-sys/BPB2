@@ -24,38 +24,62 @@ let idleTimer = null;
 let bookmarks = JSON.parse(localStorage.getItem('gacha_bookmarks') || '[]');
 
 
-// --- 世界累計カウンター同期機能 (CounterAPI) ---
-const COUNTER_API_URL = "https://api.counterapi.dev/v1/katad-apps/bpb-chimera-gacha-spins";
+// --- 世界累計カウンター同期機能 (CountAPI) ---
+// 初期ベース値: 1300
+const BASE_COUNT = 1300;
+const STORAGE_KEY = 'bpb_chimera_global_spins';
 
 async function fetchGlobalSpins() {
+    // 過去にキャッシュされた値があれば即座に画面反映
+    let cached = parseInt(localStorage.getItem(STORAGE_KEY) || '0', 10);
+    if (cached >= BASE_COUNT) {
+        updateGlobalCounterUI(cached);
+    } else {
+        updateGlobalCounterUI(BASE_COUNT);
+    }
+
     try {
-        const response = await fetch(COUNTER_API_URL);
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 4000);
+        const response = await fetch("https://countapi.mileshilliard.com/api/v1/get/katad-bpb2-gacha-visits", {
+            signal: controller.signal
+        });
+        clearTimeout(timeoutId);
         if (!response.ok) throw new Error("Fetch global spins failed");
         const data = await response.json();
-        const count = typeof data.count === 'number' ? data.count : data.value;
+        const count = typeof data.value === 'number' ? data.value : data.count;
         if (typeof count !== 'number') throw new Error("Invalid value from API");
-        updateGlobalCounterUI(count);
+        const finalCount = Math.max(BASE_COUNT, count);
+        localStorage.setItem(STORAGE_KEY, finalCount.toString());
+        updateGlobalCounterUI(finalCount);
     } catch (e) {
-        console.warn("Global counter fetch failed, setting to offline.", e);
-        // エラー時はダミー数値ではなく 'ー' を表示
-        updateGlobalCounterUI("ー");
-        setCounterOfflineUI();
+        console.warn("Global counter fetch failed, fallback to cached.", e);
+        let fallback = parseInt(localStorage.getItem(STORAGE_KEY) || '0', 10);
+        updateGlobalCounterUI(Math.max(BASE_COUNT, fallback));
     }
 }
 
 async function incrementGlobalSpins() {
     try {
-        const response = await fetch(`${COUNTER_API_URL}/up`);
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 4000);
+        const response = await fetch("https://countapi.mileshilliard.com/api/v1/hit/katad-bpb2-gacha-visits", {
+            signal: controller.signal
+        });
+        clearTimeout(timeoutId);
         if (!response.ok) throw new Error("Increment global spins failed");
         const data = await response.json();
-        const count = typeof data.count === 'number' ? data.count : data.value;
+        const count = typeof data.value === 'number' ? data.value : data.count;
         if (typeof count !== 'number') throw new Error("Invalid value from API");
-        updateGlobalCounterUI(count);
+        const finalCount = Math.max(BASE_COUNT, count);
+        localStorage.setItem(STORAGE_KEY, finalCount.toString());
+        updateGlobalCounterUI(finalCount);
     } catch (e) {
-        console.warn("Global counter increment failed, setting to offline.", e);
-        // エラー時はダミー数値ではなく 'ー' を表示
-        updateGlobalCounterUI("ー");
-        setCounterOfflineUI();
+        console.warn("Global counter increment failed, fallback to local.", e);
+        let localCount = parseInt(localStorage.getItem(STORAGE_KEY) || '0', 10);
+        localCount = Math.max(BASE_COUNT, localCount) + 1;
+        localStorage.setItem(STORAGE_KEY, localCount.toString());
+        updateGlobalCounterUI(localCount);
     }
 }
 
